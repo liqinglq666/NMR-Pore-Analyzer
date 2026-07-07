@@ -74,7 +74,7 @@ flowchart LR
 = \rho_2 \cdot \frac{F_s}{r}
 ```
 
-其中 $F_s$ 为孔隙形状因子（球形 $F_s=3$，柱形 $F_s=2$），由此导出线性标定关系：
+其中 `F_s` 为孔隙形状因子（球形 `F_s = 3`，柱形 `F_s = 2`），由此导出线性标定关系：
 
 ```math
 r\,[\text{nm}]
@@ -83,13 +83,25 @@ r\,[\text{nm}]
 \approx 23.81\,T_2
 ```
 
-标定锚点：$T_2^{*} = 4.2\,\text{ms} \Leftrightarrow r^{*} = 100\,\text{nm}$，表面弛豫率 $\rho_2 \approx 7.94\,\text{nm/ms}$
+标定锚点：
+
+```math
+T_2^{*} = 4.2\,\text{ms}
+\quad \Longleftrightarrow \quad
+r^{*} = 100\,\text{nm}
+```
+
+表面弛豫率：
+
+```math
+\rho_2 \approx 7.94\,\text{nm/ms}
+```
 
 ---
 
 ### 2. 孔径分布函数
 
-定义信号振幅谱 $\{A_i\}$ 对应的孔径分布函数为：
+定义信号振幅谱 `{A_i}` 对应的孔径分布函数为：
 
 ```math
 f(r)
@@ -146,21 +158,21 @@ S^{(\text{lin})}
 
 ### 4. 孔隙分类体系 A（物理形态）
 
-| 类别 | $T_2$ (ms) | $r$ (nm)           |
+| 类别 | T2 (ms) | r (nm)             |
 |---|---|--------------------|
-| Gel pores | $[0,\ 0.42)$ | $[0,\ 10)$         |
-| Transition pores | $[0.42,\ 4.2)$ | $[10,\ 100)$       |
-| Capillary pores | $[4.2,\ 41.7)$ | $[100,\ 1000)$     |
-| Air-voids | $[41.7,\ +\infty)$ | $[1000,\ +\infty)$ |
+| Gel pores | [0, 0.42) | [0, 10)           |
+| Transition pores | [0.42, 4.2) | [10, 100) |
+| Capillary pores | [4.2, 41.7) | [100, 1000) |
+| Air-voids | [41.7, +inf) | [1000, +inf) |
 
 ### 5. 孔隙分类体系 B（损伤潜势）
 
-| 类别 | $T_2$ (ms)        | $r$ (nm)          |
+| 类别 | T2 (ms)           | r (nm)            |
 |---|-------------------|-------------------|
-| Harmless | $[0,\ 0.83)$      | $[0,\ 20)$        |
-| Less-harmful | $[0.83,\ 2.08)$   | $[20,\ 50)$       |
-| Harmful | $[2.08,\ 8.33)$   | $[50,\ 200)$      |
-| More-harmful | $[8.33,\ +\infty)$ | $[200,\ +\infty)$ |
+| Harmless | [0, 0.83) | [0, 20) |
+| Less-harmful | [0.83, 2.08) | [20, 50) |
+| Harmful | [2.08, 8.33) | [50, 200) |
+| More-harmful | [8.33, +inf) | [200, +inf) |
 
 ---
 
@@ -188,17 +200,42 @@ p_n
 
 ### 7. 峰值检测算法
 
-设信号序列 $\mathbf{A} = (A_1, A_2, \ldots, A_N)$，对应时间轴 $\mathbf{t} = (t_1, t_2, \ldots, t_N)$。
+设信号序列和对应时间轴为：
 
-**Primary Peak**：限定域 $\Omega_1 = \{i : t_i \in [0, 10)\,\text{ms}\}$ 内全局最大值
+```math
+\mathbf{A} = (A_1, A_2, \ldots, A_N)
+```
+
+```math
+\mathbf{t} = (t_1, t_2, \ldots, t_N)
+```
+
+**Primary Peak**：限定域内全局最大值
+
+```math
+\Omega_1 = \{i : t_i \in [0, 10)\,\text{ms}\}
+```
 
 ```math
 i_{\text{pri}}
 = \underset{i\,\in\,\Omega_1}{\arg\max}\; A_i
 ```
 
-**Secondary Peak**：限定域 $\Omega_2 = \{i : t_i \in (10, 1000]\,\text{ms}\}$ 内，满足局部极大值条件
-$A_i > A_{i-1}$ 且 $A_i > A_{i+1}$ 的候选集 $\mathcal{L} \subset \Omega_2$ 中振幅最大者：
+**Secondary Peak**：限定域内满足局部极大值条件的最大候选峰：
+
+```math
+\Omega_2 = \{i : t_i \in (10, 1000]\,\text{ms}\}
+```
+
+```math
+A_i > A_{i-1}
+\quad \text{and} \quad
+A_i > A_{i+1}
+```
+
+```math
+\mathcal{L} \subset \Omega_2
+```
 
 ```math
 i_{\text{sec}}
