@@ -52,13 +52,25 @@ SYSTEM_A: Final[dict[str, tuple[float, float]]] = {
     "Air-voids":  (41.7, float("inf")),
 }
 
-#: System B – Hazard / Damage classification
+#: System B — Hazard / Damage classification
 SYSTEM_B: Final[dict[str, tuple[float, float]]] = {
     "Harmless":     (0.0,    0.83),
     "Less-harmful": (0.83,   2.08),
     "Harmful":      (2.08,  8.33),
     "More-harmful": (8.33, float("inf")),
 }
+
+
+def classification_boundaries_ms() -> list[float]:
+    """Return all unique finite class boundaries in T2 milliseconds."""
+    boundaries = {
+        edge
+        for system in (SYSTEM_A, SYSTEM_B)
+        for lo_hi in system.values()
+        for edge in lo_hi
+        if 0.0 < edge < float("inf")
+    }
+    return sorted(boundaries)
 
 
 # ---------------------------------------------------------------------------

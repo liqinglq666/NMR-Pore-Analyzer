@@ -29,7 +29,7 @@ Origin column convention (Sheet 3 & 4)
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd

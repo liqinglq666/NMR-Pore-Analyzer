@@ -44,10 +44,9 @@ from PySide6.QtWidgets import (
 )
 
 from logic.analyzer import AnalysisResult, analyse, get_amplitude_columns
-from logic.config import IntegrationMode
+from logic.config import IntegrationMode, MORANDI_PALETTE
 from logic.peak_processor import PeakResult, detect_peaks
 from logic.exporter import export_batch_results
-from logic.config import MORANDI_PALETTE
 from ui.plot_canvas import PlotCanvas
 
 
@@ -803,6 +802,8 @@ class MainWindow(QMainWindow):
             busy: True when analysis is in progress.
         """
         self._btn_browse.setEnabled(not busy)
+        self._mode_combo.setEnabled(not busy)
+        self._btn_export.setEnabled((not busy) and bool(self._batch_results))
         self._progress.setVisible(busy)
         if busy:
             self._progress.setValue(0)

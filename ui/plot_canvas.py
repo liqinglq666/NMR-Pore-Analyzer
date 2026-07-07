@@ -26,6 +26,8 @@ from logic.config import (
     FIGURE_SIZE,
     MORANDI_PALETTE,
     PLOT_FONT_FAMILY,
+    RADIUS_FACTOR,
+    classification_boundaries_ms,
 )
 from logic.analyzer import AnalysisResult
 from logic.peak_processor import PeakResult
@@ -98,16 +100,15 @@ class PlotCanvas(QWidget):
         c = MORANDI_PALETTE  # 4 colours for 4 pore classes
 
         # ---- Build fraction arrays from ClassificationResult ---------------
-        # system_a.sums / system_b.sums → shape (n_categories,)
+        # system_a.ratios / system_b.ratios → shape (n_categories,)
         # We collect per-sample rows then transpose to (n_categories, n_samples)
 
-        def _sums_to_pct(cr) -> np.ndarray:
-            """Convert ClassificationResult sums to percentage array."""
-            total = cr.sums.sum()
-            return cr.sums / total * 100 if total > 0 else np.zeros_like(cr.sums)
+        def _ratios_to_pct(cr) -> np.ndarray:
+            """Convert normalised ClassificationResult ratios to percentages."""
+            return cr.ratios * 100.0
 
-        a_fracs = np.array([_sums_to_pct(a.system_a) for a in analyses]).T  # (4, n)
-        b_fracs = np.array([_sums_to_pct(a.system_b) for a in analyses]).T
+        a_fracs = np.array([_ratios_to_pct(a.system_a) for a in analyses]).T  # (4, n)
+        b_fracs = np.array([_ratios_to_pct(a.system_b) for a in analyses]).T
 
         # Labels come directly from ClassificationResult to stay in sync
         sys_a_labels = analyses[0].system_a.labels
@@ -250,9 +251,7 @@ class PlotCanvas(QWidget):
 
         # --- Classification boundaries ---
         if show_classification:
-            from logic.config import RADIUS_FACTOR
-            boundaries_ms = [0.42, 4.2, 41.7, 8.3, 20.8, 83.3]
-            for ms in boundaries_ms:
+            for ms in classification_boundaries_ms():
                 ax_left.axvline(
                     RADIUS_FACTOR * ms,
                     color="silver", linewidth=0.7, linestyle="--",
@@ -355,8 +354,7 @@ class PlotCanvas(QWidget):
 
         # Classification boundaries
         if show_classification:
-            from logic.config import RADIUS_FACTOR
-            for ms in [0.42, 4.2, 41.7, 8.3, 20.8, 83.3]:
+            for ms in classification_boundaries_ms():
                 ax_left.axvline(
                     RADIUS_FACTOR * ms,
                     color="silver", linewidth=0.7,
