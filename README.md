@@ -1,26 +1,46 @@
-# liqinglq666-NMR-Analyzer v1.0
+# liqinglq666-NMR-Analyzer
 
-> 低场核磁共振（LF-NMR）T₂ 弛豫时间数据的孔隙结构分析桌面工具  
-> *仅供学术交流使用*
+Desktop analysis tool for LF-NMR T2 relaxation data and pore-structure
+characterisation. It supports multi-sample Excel/CSV files, pore classification,
+peak analysis, scientific plots, and Excel report export.
+
+This project is intended for academic research and data analysis workflows.
 
 ---
 
-## 项目结构
+## Features
 
-```
-NMR-Pore-Distribution-Analyzer-Pro/
-├── main.py
-├── logic/
-│   ├── config.py
-│   ├── analyzer.py
-│   ├── peak_processor.py
-│   └── exporter.py
-└── ui/
-    ├── plot_canvas.py
-    └── main_window.py
+- Load `.xlsx`, `.xls`, and `.csv` NMR data files.
+- Detect the T2 time column with flexible column-name matching.
+- Analyse one or many sample columns in the same file.
+- Convert T2 relaxation time to pore radius.
+- Calculate pore-classification ratios with three integration modes:
+  - Bin Summation
+  - Log-domain Trapezoidal Integration
+  - Linear Trapezoidal Integration
+- Detect primary peaks, secondary peaks, and valley positions.
+- Plot pore-size distribution and cumulative porosity curves.
+- Export multi-sheet Excel reports for downstream analysis.
+
+---
+
+## Project Structure
+
+```text
+NMR-Pore-Analyzer/
+|-- main.py
+|-- requirements.txt
+|-- logic/
+|   |-- config.py
+|   |-- analyzer.py
+|   |-- peak_processor.py
+|   `-- exporter.py
+`-- ui/
+    |-- plot_canvas.py
+    `-- main_window.py
 ```
 
-### 模块依赖
+## Module Flow
 
 ```mermaid
 flowchart TD
@@ -31,148 +51,192 @@ flowchart TD
     az --> cfg["logic/config.py"]
     az --> pp["logic/peak_processor.py"]
     ex --> cfg
+    pc --> cfg
     pc --> az
 ```
 
----
-
-## 数据处理流程
+## Data Processing Flow
 
 ```mermaid
 flowchart LR
-    A(["Raw .xlsx/.csv"]) --> B["Preprocessing\n去 NaN / 过滤 ≤0"]
-    B --> C["T₂ → 孔径转换"]
-    C --> D["积分\nBin / Log-Trap / Linear-Trap"]
-    D --> E["System A\n物理分类"]
-    D --> F["System B\n损伤分类"]
-    D --> G["Peak Detector\n主峰 / 次峰 / 谷值"]
-    D --> H["累积孔隙度"]
-    E & F & G & H --> I["PlotCanvas 可视化"]
-    E & F & G --> J["Excel 导出"]
+    A["Raw XLSX/CSV file"] --> B["Clean data: drop NaN and non-positive rows"]
+    B --> C["Convert T2 to pore radius"]
+    C --> D["Integrate by selected mode"]
+    D --> E["System A classification"]
+    D --> F["System B classification"]
+    D --> G["Peak detection"]
+    D --> H["Cumulative porosity"]
+    E --> I["Plots and tables"]
+    F --> I
+    G --> I
+    H --> I
+    E --> J["Excel export"]
+    F --> J
+    G --> J
 ```
 
 ---
 
-## 核心公式
+## Installation
 
-### 1. T₂ → 孔径转换
-
-基于表面弛豫理论，多孔介质中流体的横向弛豫速率满足：
-
-$$\frac{1}{T_2} = \frac{1}{T_{2,\text{bulk}}} + \rho_2 \cdot \frac{S}{V} + \frac{D\left(\gamma G T_E\right)^2}{12}$$
-
-忽略体相弛豫和扩散项（短回波间距条件下），化简为：
-
-$$\frac{1}{T_2} \approx \rho_2 \cdot \frac{S}{V} = \rho_2 \cdot \frac{F_s}{r}$$
-
-其中 $F_s$ 为孔隙形状因子（球形 $F_s=3$，柱形 $F_s=2$），由此导出线性标定关系：
-
-$$\boxed{r \;[\text{nm}] = \frac{\rho_2 F_s}{1} \cdot T_2 = \frac{100}{4.2} \cdot T_2 \;[\text{ms}] \approx 23.81\, T_2}$$
-
-标定锚点：$T_2^{*} = 4.2\,\text{ms} \Leftrightarrow r^{*} = 100\,\text{nm}$，表面弛豫率 $\rho_2 \approx 7.94\,\text{nm/ms}$
-
----
-
-### 2. 孔径分布函数
-
-定义信号振幅谱 $\{A_i\}$ 对应的孔径分布函数为：
-
-$$f(r) = \frac{\mathrm{d}V_\text{pore}}{\mathrm{d}(\ln r)} = A_i \cdot \frac{r_i}{\Delta r_i}$$
-
-对数坐标下归一化孔径分布密度：
-
-$$\tilde{f}(r) = \frac{f(r)}{\displaystyle\int_0^{+\infty} f(r)\,\mathrm{d}(\ln r)} = \frac{A_i}{\displaystyle\sum_{j=1}^N A_j \cdot \Delta(\ln r_j)}$$
-
----
-
-### 3. 积分模式
-
-**Bin Summation**（默认，适用于对数等间距 ILT 反演结果）
-
-$$S^{(\text{bin})} = \sum_{i=1}^{N} A_i$$
-
-**Log-Trapezoidal**（对数空间梯形积分，保持谱形不失真）
-
-$$S^{(\text{log})} = \sum_{i=1}^{N-1} \frac{A_i + A_{i+1}}{2} \cdot \Delta_i^{\log}, \qquad \Delta_i^{\log} = \log_{10}\frac{t_{i+1}}{t_i}$$
-
-**Linear Trapezoidal** ⚠（仅适用于线性等间距采样数据）
-
-$$S^{(\text{lin})} = \sum_{i=1}^{N-1} \frac{A_i + A_{i+1}}{2} \cdot (t_{i+1} - t_i)$$
-
-**各类别相对孔隙度**
-
-$$\phi_k = \frac{\left|S_k\right|}{\displaystyle\sum_{j} \left|S_j\right|}, \qquad \sum_k \phi_k = 1$$
-
----
-
-### 4. 孔隙分类体系 A（物理形态）
-
-| 类别 | $T_2$ (ms) | $r$ (nm)           |
-|---|---|--------------------|
-| Gel pores | $[0,\ 0.42)$ | $[0,\ 10)$         |
-| Transition pores | $[0.42,\ 4.2)$ | $[10,\ 100)$       |
-| Capillary pores | $[4.2,\ 41.7)$ | $[100,\ 1000)$     |
-| Air-voids | $[41.7,\ +\infty)$ | $[1000,\ +\infty)$ |
-
-### 5. 孔隙分类体系 B（损伤潜势）
-
-| 类别 | $T_2$ (ms)        | $r$ (nm)          |
-|---|-------------------|-------------------|
-| Harmless | $[0,\ 0.83)$      | $[0,\ 20)$        |
-| Less-harmful | $[0.83,\ 2.08)$   | $[20,\ 50)$       |
-| Harmful | $[2.08,\ 8.33)$   | $[50,\ 200)$      |
-| More-harmful | $[8.33,\ +\infty)$ | $[200,\ +\infty)$ |
-
----
-
-### 6. 累积孔隙度函数
-
-定义累积孔隙体积分数（CDF）为：
-
-$$\Phi\!\left(T_2^{(n)}\right) = \frac{\displaystyle\sum_{i=1}^{n} A_i}{\displaystyle\sum_{i=1}^{N} A_i}, \quad n = 1, \ldots, N$$
-
-其导数即归一化孔径分布概率密度：
-
-$$p_n = \frac{\mathrm{d}\Phi}{\mathrm{d}(\ln T_2)}\Bigg|_{T_2^{(n)}} \approx \frac{A_n}{\displaystyle\sum_{i=1}^{N} A_i}$$
-
----
-
-### 7. 峰值检测算法
-
-设信号序列 $\mathbf{A} = (A_1, A_2, \ldots, A_N)$，对应时间轴 $\mathbf{t} = (t_1, t_2, \ldots, t_N)$。
-
-**Primary Peak**：限定域 $\Omega_1 = \{i : t_i \in [0, 10)\,\text{ms}\}$ 内全局最大值
-
-$$i_{\text{pri}} = \underset{i\,\in\,\Omega_1}{\arg\max}\; A_i$$
-
-**Secondary Peak**：限定域 $\Omega_2 = \{i : t_i \in (10, 1000]\,\text{ms}\}$ 内，满足局部极大值条件
-$A_i > A_{i-1}$ 且 $A_i > A_{i+1}$ 的候选集 $\mathcal{L} \subset \Omega_2$ 中振幅最大者：
-
-$$i_{\text{sec}} = \underset{i\,\in\,\mathcal{L}}{\arg\max}\; A_i$$
-
-**Valley**：两峰间极小值，用于划分积分域
-
-$$i_{\text{v}} = \underset{\{i\,:\,i_{\text{pri}} < i < i_{\text{sec}}\}}{\arg\min}\; A_i, \qquad t_{\text{split}} = \begin{cases} t_{i_{\text{v}}} & \mathcal{L} \neq \varnothing \\ 10\,\text{ms} & \mathcal{L} = \varnothing\;(\text{fallback}) \end{cases}$$
-
-**峰域面积与相对贡献**
-
-$$A_{\text{pri}} = \sum_{t_i < t_{\text{split}}} A_i, \qquad A_{\text{sec}} = \sum_{t_i \geq t_{\text{split}}} A_i$$
-
-$$R_k = \frac{A_k}{A_{\text{pri}} + A_{\text{sec}}}, \quad k \in \{\text{pri},\,\text{sec}\}, \qquad R_{\text{pri}} + R_{\text{sec}} \equiv 1$$
-
----
-
-## 快速启动
+Python 3.10 or later is recommended.
 
 ```bash
 pip install -r requirements.txt
+```
+
+## Run
+
+```bash
 python main.py
 ```
 
-**依赖：** Python ≥ 3.10 · PySide6 · NumPy · Pandas · Matplotlib · SciPy · openpyxl
+If PySide6 fails to load on Windows, reinstalling PySide6 in the active Python
+environment usually resolves missing Qt DLL issues:
 
-> NumPy ≥ 2.0 使用 `numpy.trapezoid`，< 2.0 自动回退至 `numpy.trapz`
+```bash
+pip uninstall PySide6 PySide6_Addons PySide6_Essentials shiboken6
+pip install -r requirements.txt
+```
 
 ---
 
-*liqinglq666 · 学术交流用途*
+## Input Data Format
+
+The input file should contain:
+
+- one T2/time column
+- one or more amplitude/signal columns
+
+Recognised T2 column aliases include:
+
+```text
+time, t2, t_2, t2(ms), time(ms), ms, relaxation time
+```
+
+Recognised amplitude aliases include:
+
+```text
+amplitude, amp, intensity, signal, a, dv/dr, incremental
+```
+
+For multi-sample files, each non-time column is treated as a sample.
+
+Example:
+
+| T2(ms) | Sample_A | Sample_B |
+|---:|---:|---:|
+| 0.10 | 12.5 | 10.1 |
+| 0.20 | 18.3 | 14.8 |
+| 0.50 | 22.0 | 19.6 |
+
+---
+
+## Core Calculations
+
+### T2 to Pore Radius
+
+The default calibration anchor is:
+
+```text
+T2 = 4.2 ms  ->  r = 100 nm
+```
+
+The pore radius is calculated as:
+
+```text
+r (nm) = (100 / 4.2) * T2 (ms)
+r (nm) ~= 23.81 * T2 (ms)
+```
+
+### Integration Modes
+
+Bin Summation:
+
+```text
+S_bin = sum(A_i)
+```
+
+Log-domain Trapezoidal Integration:
+
+```text
+S_log = sum(0.5 * (A_i + A_i+1) * log10(t_i+1 / t_i))
+```
+
+Linear Trapezoidal Integration:
+
+```text
+S_linear = sum(0.5 * (A_i + A_i+1) * (t_i+1 - t_i))
+```
+
+Class ratio:
+
+```text
+ratio_k = abs(S_k) / sum(abs(S_j))
+```
+
+---
+
+## Classification Systems
+
+### System A: Physical Pore Morphology
+
+| Class | T2 range (ms) | Radius range (nm) |
+|---|---:|---:|
+| Gel pores | [0, 0.42) | [0, 10) |
+| Transition pores | [0.42, 4.2) | [10, 100) |
+| Capillary pores | [4.2, 41.7) | [100, 1000) |
+| Air voids | [41.7, +inf) | [1000, +inf) |
+
+### System B: Damage Potential
+
+| Class | T2 range (ms) | Radius range (nm) |
+|---|---:|---:|
+| Harmless | [0, 0.83) | [0, 20) |
+| Less harmful | [0.83, 2.08) | [20, 50) |
+| Harmful | [2.08, 8.33) | [50, 200) |
+| More harmful | [8.33, +inf) | [200, +inf) |
+
+---
+
+## Peak Analysis
+
+Primary peak:
+
+- searched in the low-T2 window `[0, 10)` ms
+- selected as the maximum amplitude in that window
+
+Secondary peak:
+
+- searched in the high-T2 window `[10, 1000)` ms
+- selected as the dominant local maximum
+
+Valley:
+
+- selected as the minimum amplitude between the primary and secondary peaks
+- falls back to `10 ms` when no valid separating point exists
+
+Peak areas are calculated by bin summation on each side of the valley.
+
+---
+
+## Exported Workbook
+
+The Excel report contains:
+
+1. `Summary_Peak_Statistics`
+2. `Pore_Classification_Ratios`
+3. `Cumulative_Curve_Data`
+
+The workbook is formatted for convenient inspection and further processing in
+Excel or Origin.
+
+---
+
+## Notes
+
+- `scipy` is required for peak detection.
+- NumPy 2.x uses `numpy.trapezoid`; older NumPy versions fall back to
+  `numpy.trapz`.
+- Linear integration should be used carefully for log-spaced inversion data,
+  because it may over-weight large-pore bins.
