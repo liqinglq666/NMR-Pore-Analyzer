@@ -3,18 +3,16 @@ Core computational engine for NMR pore-structure analysis.
 
 Responsibilities
 ----------------
-- Robust ingestion of .xlsx / .csv files with fuzzy column matching.
-- Data cleaning and validation (remove NaN, negatives, monotonicity check).
-- T₂-to-radius conversion.
-- Bin-summation integration for both classification systems.
+- Robust ingestion of .xlsx / .xls / .csv files with fuzzy column matching.
+- Data cleaning and validation.
+- T2-to-radius conversion.
+- Pore classification with bin summation or boundary-aware trapezoidal modes.
 - Cumulative porosity computation.
-
-All heavy operations are pure functions returning immutable results so they
-can be safely called from a QThread without shared-state issues.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,14 +37,8 @@ from logic.config import (
 
 @dataclass(frozen=True)
 class RawData:
-    """Validated, cleaned NMR measurement vectors.
+    """Validated, cleaned NMR measurement vectors."""
 
-    Attributes:
-        t2_ms: T₂ relaxation times in milliseconds (ascending).
-        amplitude: Differential amplitude values (same length as t2_ms).
-        source_path: Original file path for traceability.
-        sample_name: Derived from the file stem.
-    """
     t2_ms: np.ndarray
     amplitude: np.ndarray
     source_path: Path
@@ -55,15 +47,8 @@ class RawData:
 
 @dataclass(frozen=True)
 class ClassificationResult:
-    """Bin-summation results for one classification system.
+    """Integration results for one pore classification system."""
 
-    Attributes:
-        system_name: "A" or "B".
-        labels: Category names in threshold order.
-        counts: Number of bins in each category.
-        sums: Sum of amplitudes in each category.
-        ratios: Fractional porosity for each category (sums / total).
-    """
     system_name: str
     labels: list[str]
     counts: np.ndarray
@@ -73,16 +58,8 @@ class ClassificationResult:
 
 @dataclass(frozen=True)
 class AnalysisResult:
-    """Complete analysis output for one sample.
+    """Complete analysis output for one sample."""
 
-    Attributes:
-        raw: Cleaned source data.
-        radius_nm: Pore radius in nanometres (same length as raw.t2_ms).
-        cumulative: Normalised cumulative porosity [0, 1].
-        system_a: Classification by physical pore type.
-        system_b: Classification by hazard level.
-        total_amplitude: Scalar sum of all amplitude bins.
-    """
     raw: RawData
     radius_nm: np.ndarray
     cumulative: np.ndarray
@@ -95,9 +72,17 @@ class AnalysisResult:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _normalise_col(name: str) -> str:
-    """Strip whitespace, punctuation and lower-case a column header."""
-    return re.sub(r"[\s\W_]+", "", name).lower()
+_SUBSCRIPT_MAP = str.maketrans({
+    "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+    "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+})
+
+
+def _normalise_col(name: object) -> str:
+    """Strip whitespace/punctuation, convert subscript digits and lower-case."""
+    text = str(name).translate(_SUBSCRIPT_MAP).lower()
+    text = text.replace("／", "/").replace("（", "(").replace("）", ")")
+    return re.sub(r"[\s\W_]+", "", text)
 
 
 def _fuzzy_find_column(
@@ -105,19 +90,7 @@ def _fuzzy_find_column(
     aliases: list[str],
     label: str,
 ) -> str:
-    """Return the first DataFrame column that matches any alias.
-
-    Args:
-        df: Input DataFrame.
-        aliases: Candidate normalised names.
-        label: Human-readable description used in error messages.
-
-    Returns:
-        Matched column name (original casing).
-
-    Raises:
-        ValueError: If no matching column is found.
-    """
+    """Return the first DataFrame column that matches any alias."""
     normalised = {_normalise_col(c): c for c in df.columns}
     for alias in aliases:
         key = _normalise_col(alias)
@@ -131,81 +104,123 @@ def _fuzzy_find_column(
     )
 
 
+def _coerce_mode(mode: IntegrationMode | str) -> IntegrationMode:
+    """Accept IntegrationMode or its value/name and return IntegrationMode."""
+    if isinstance(mode, IntegrationMode):
+        return mode
+    try:
+        return IntegrationMode(mode)
+    except ValueError:
+        try:
+            return IntegrationMode[str(mode)]
+        except KeyError as exc:
+            valid = ", ".join(m.value for m in IntegrationMode)
+            raise ValueError(f"Unsupported integration mode '{mode}'. Valid: {valid}") from exc
+
+
+def _trapezoid(y: np.ndarray, x: np.ndarray) -> float:
+    """NumPy-version-safe trapezoidal integration."""
+    try:
+        return float(np.trapezoid(y, x))  # NumPy >= 2.0
+    except AttributeError:
+        return float(np.trapz(y, x))      # NumPy < 2.0
+
+
 def _integrate_segment(
     t2_seg: np.ndarray,
     amp_seg: np.ndarray,
     mode: IntegrationMode,
 ) -> float:
-    """Compute the integrated area for one T₂ segment.
-
-    Args:
-        t2_seg:  T₂ values for the segment (must have ≥1 point).
-        amp_seg: Corresponding amplitude values.
-        mode:    Integration method.
-
-    Returns:
-        Scalar area value (units depend on mode).
-    """
+    """Compute the integrated area for one explicit T2 segment."""
     if len(t2_seg) == 0:
         return 0.0
     if mode is IntegrationMode.BIN_SUMMATION:
         return float(amp_seg.sum())
-    # Choose trapezoid function compatible with installed NumPy version
-    try:
-        trapezoid = np.trapezoid  # NumPy >= 2.0
-    except AttributeError:
-        trapezoid = np.trapz      # NumPy < 2.0
+    if len(t2_seg) < 2:
+        return 0.0
     if mode is IntegrationMode.LOG_TRAPEZOIDAL:
-        return float(trapezoid(amp_seg, np.log10(t2_seg)))
-    # LINEAR_TRAPEZOIDAL
-    return float(trapezoid(amp_seg, t2_seg))
+        return _trapezoid(amp_seg, np.log10(t2_seg))
+    return _trapezoid(amp_seg, t2_seg)
 
 
-def _bin_summation(
+def _clip_curve_to_interval(
+    t2_ms: np.ndarray,
+    amplitude: np.ndarray,
+    lo: float,
+    hi: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Clip a spectrum to [lo, hi] with linear interpolation at boundaries.
+
+    This is used only by trapezoidal integration modes. It avoids area loss when
+    a classification threshold falls between two measured T2 points.
+    """
+    if len(t2_ms) < 2:
+        return np.array([], dtype=float), np.array([], dtype=float)
+
+    finite_hi = math.isfinite(hi)
+    lower = max(float(lo), float(t2_ms[0]))
+    upper = min(float(hi) if finite_hi else float(t2_ms[-1]), float(t2_ms[-1]))
+    if upper <= lower:
+        return np.array([], dtype=float), np.array([], dtype=float)
+
+    interior_mask = (t2_ms > lower) & (t2_ms < upper)
+    xs = [lower]
+    ys = [float(np.interp(lower, t2_ms, amplitude))]
+
+    if interior_mask.any():
+        xs.extend(t2_ms[interior_mask].astype(float).tolist())
+        ys.extend(amplitude[interior_mask].astype(float).tolist())
+
+    xs.append(upper)
+    ys.append(float(np.interp(upper, t2_ms, amplitude)))
+
+    return np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
+
+
+def _integrate_interval(
+    t2_ms: np.ndarray,
+    amplitude: np.ndarray,
+    lo: float,
+    hi: float,
+    mode: IntegrationMode,
+) -> float:
+    """Integrate one pore-class interval.
+
+    Bin summation keeps the instrument-bin semantics. Trapezoidal modes treat the
+    spectrum as a continuous curve and interpolate exact class boundaries.
+    """
+    if mode is IntegrationMode.BIN_SUMMATION:
+        mask = (t2_ms >= lo) & (t2_ms < hi)
+        return _integrate_segment(t2_ms[mask], amplitude[mask], mode)
+
+    x_clip, y_clip = _clip_curve_to_interval(t2_ms, amplitude, lo, hi)
+    return _integrate_segment(x_clip, y_clip, mode)
+
+
+def _classify(
     t2_ms: np.ndarray,
     amplitude: np.ndarray,
     thresholds: dict[str, tuple[float, float]],
     system_name: str,
     mode: IntegrationMode = IntegrationMode.BIN_SUMMATION,
 ) -> ClassificationResult:
-    """Compute pore-fraction distribution for one classification system.
-
-    The integration method is controlled by *mode*:
-
-    * ``BIN_SUMMATION``      — direct amplitude sum (default, recommended for
-      log-spaced NMR inversion data where ΔT₂ weighting is implicit).
-    * ``LOG_TRAPEZOIDAL``    — ∫ A · d(log₁₀ T₂), mathematically rigorous on
-      a logarithmic axis.
-    * ``LINEAR_TRAPEZOIDAL`` — standard ∫ A dT₂, suitable only for linearly
-      spaced data.
-
-    Args:
-        t2_ms:       Sorted T₂ array in ms.
-        amplitude:   Differential amplitude array.
-        thresholds:  Ordered dict mapping label → (lo_ms, hi_ms).
-        system_name: "A" or "B" for bookkeeping.
-        mode:        Integration method (default: BIN_SUMMATION).
-
-    Returns:
-        ClassificationResult with counts, sums and ratios.
-    """
+    """Compute pore-fraction distribution for one classification system."""
+    mode = _coerce_mode(mode)
     labels: list[str] = []
     counts: list[int] = []
-    sums:   list[float] = []
+    sums: list[float] = []
 
     for label, (lo, hi) in thresholds.items():
         mask = (t2_ms >= lo) & (t2_ms < hi)
         labels.append(label)
         counts.append(int(mask.sum()))
-        sums.append(_integrate_segment(t2_ms[mask], amplitude[mask], mode))
+        sums.append(_integrate_interval(t2_ms, amplitude, lo, hi, mode))
 
-    sums_arr   = np.array(sums,   dtype=np.float64)
+    sums_arr = np.array(sums, dtype=np.float64)
     counts_arr = np.array(counts, dtype=np.int64)
-    # For log/linear trap, values may be tiny or negative in edge cases;
-    # take absolute values before normalising to keep ratios physical.
     pos_sums = np.abs(sums_arr)
-    total    = pos_sums.sum()
-    ratios   = pos_sums / total if total > 0 else np.zeros_like(sums_arr)
+    total = float(pos_sums.sum())
+    ratios = pos_sums / total if total > 0 else np.zeros_like(sums_arr)
 
     return ClassificationResult(
         system_name=system_name,
@@ -216,55 +231,47 @@ def _bin_summation(
     )
 
 
+# Backwards-compatible private name used by older code/tests.
+_bin_summation = _classify
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def _read_file(file_path: Path) -> pd.DataFrame:
-    """Read an Excel or CSV file into a DataFrame.
-
-    Args:
-        file_path: Path to the data file.
-
-    Returns:
-        Raw DataFrame.
-
-    Raises:
-        FileNotFoundError: If the path does not exist.
-        ValueError: If the file format is unsupported.
-    """
+    """Read an Excel or CSV file into a DataFrame."""
     file_path = Path(file_path)
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
+
     suffix = file_path.suffix.lower()
-    if suffix in {".xlsx", ".xls"}:
+    if suffix == ".xlsx":
         return pd.read_excel(file_path, engine="openpyxl")
-    elif suffix == ".csv":
-        return pd.read_csv(file_path)
-    else:
-        raise ValueError(f"Unsupported file format: '{suffix}'. Use .xlsx or .csv")
+    if suffix == ".xls":
+        try:
+            return pd.read_excel(file_path, engine="xlrd")
+        except ImportError as exc:
+            raise ImportError(
+                "Reading legacy .xls files requires xlrd. "
+                "Install dependencies with: pip install -r requirements.txt"
+            ) from exc
+    if suffix == ".csv":
+        try:
+            return pd.read_csv(file_path, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            return pd.read_csv(file_path, encoding="gbk")
+
+    raise ValueError(f"Unsupported file format: '{suffix}'. Use .xlsx, .xls or .csv")
 
 
 def get_amplitude_columns(file_path: Path) -> list[str]:
-    """Return all non-time column names in the file.
-
-    Useful for multi-sample files where each column represents a specimen.
-
-    Args:
-        file_path: Path to the data file (.xlsx / .csv).
-
-    Returns:
-        List of column names that are NOT the T₂ time column.
-
-    Raises:
-        FileNotFoundError: If the path does not exist.
-        ValueError: If no T₂ column or no amplitude columns are found.
-    """
+    """Return all non-time column names in the file."""
     df = _read_file(file_path)
-    t2_col = _fuzzy_find_column(df, TIME_COLUMN_ALIASES, "T₂ time")
+    t2_col = _fuzzy_find_column(df, TIME_COLUMN_ALIASES, "T2 time")
     candidates = [c for c in df.columns if c != t2_col]
     if not candidates:
-        raise ValueError("No amplitude columns found after excluding the T₂ column.")
+        raise ValueError("No amplitude columns found after excluding the T2 column.")
     return candidates
 
 
@@ -272,29 +279,11 @@ def load_raw_data(
     file_path: Path,
     column: Optional[str] = None,
 ) -> RawData:
-    """Load and validate NMR data from an Excel or CSV file.
-
-    The function performs fuzzy column matching, drops non-positive rows,
-    and guarantees the returned arrays are sorted by T₂ in ascending order.
-
-    Args:
-        file_path: Absolute or relative path to the data file (.xlsx / .csv).
-        column: Explicit amplitude column name to use.  When *None* the
-            function falls back to fuzzy alias matching against
-            ``AMPLITUDE_COLUMN_ALIASES``.  Pass a column name obtained from
-            :func:`get_amplitude_columns` to handle multi-sample files.
-
-    Returns:
-        RawData with clean, sorted numeric arrays.
-
-    Raises:
-        FileNotFoundError: If the path does not exist.
-        ValueError: If required columns cannot be found or data is unusable.
-    """
+    """Load and validate NMR data from an Excel or CSV file."""
     file_path = Path(file_path)
     df = _read_file(file_path)
 
-    t2_col = _fuzzy_find_column(df, TIME_COLUMN_ALIASES, "T₂ time")
+    t2_col = _fuzzy_find_column(df, TIME_COLUMN_ALIASES, "T2 time")
 
     if column is not None:
         if column not in df.columns:
@@ -314,13 +303,21 @@ def load_raw_data(
     if len(sub) < 3:
         raise ValueError(
             f"Insufficient valid data rows ({len(sub)}) after cleaning. "
-            "Check that T₂ and Amplitude columns contain positive numeric values."
+            "Check that T2 and Amplitude columns contain positive numeric values."
         )
 
     sub = sub.sort_values("t2").reset_index(drop=True)
 
-    # Use column name as sample name for multi-sample files
-    sample_name = column if column is not None else file_path.stem
+    # Merge duplicate T2 bins by summing their positive amplitudes. This prevents
+    # zero-width intervals from breaking log/linear integration.
+    sub = sub.groupby("t2", as_index=False, sort=True)["amp"].sum()
+    if len(sub) < 3:
+        raise ValueError(
+            "Insufficient unique positive T2 bins after merging duplicates. "
+            "At least three unique T2 values are required."
+        )
+
+    sample_name = str(column) if column is not None else file_path.stem
 
     return RawData(
         t2_ms=sub["t2"].to_numpy(dtype=np.float64),
@@ -331,31 +328,18 @@ def load_raw_data(
 
 
 def compute_radius(t2_ms: np.ndarray) -> np.ndarray:
-    """Convert T₂ relaxation times to pore radii.
-
-    Uses the calibration anchor T₂ = 4.2 ms ↔ r = 100 nm.
-
-    Args:
-        t2_ms: Array of T₂ values in milliseconds.
-
-    Returns:
-        Array of pore radii in nanometres.
-    """
-    return RADIUS_FACTOR * t2_ms
+    """Convert T2 relaxation times to pore radii in nanometres."""
+    return RADIUS_FACTOR * np.asarray(t2_ms, dtype=np.float64)
 
 
 def compute_cumulative(amplitude: np.ndarray) -> np.ndarray:
-    """Compute normalised cumulative porosity distribution.
-
-    Args:
-        amplitude: Differential amplitude array (positive, sorted by T₂).
-
-    Returns:
-        Normalised cumulative sum in [0, 1].
-    """
+    """Compute normalised cumulative porosity distribution."""
+    amplitude = np.asarray(amplitude, dtype=np.float64)
+    if len(amplitude) == 0:
+        return np.array([], dtype=np.float64)
     cum = np.cumsum(amplitude)
-    total = cum[-1]
-    return cum / total if total > 0 else cum
+    total = float(cum[-1])
+    return cum / total if total > 0 else np.zeros_like(cum)
 
 
 def analyse(
@@ -363,32 +347,14 @@ def analyse(
     column: Optional[str] = None,
     mode: IntegrationMode = IntegrationMode.BIN_SUMMATION,
 ) -> AnalysisResult:
-    """Full analysis pipeline for one NMR data file.
-
-    Orchestrates loading → cleaning → conversion → integration.
-
-    Args:
-        file_path: Path to the .xlsx or .csv data file.
-        column:    Explicit amplitude column name.  Pass *None* to use fuzzy
-                   alias matching (single-column files), or a column name from
-                   :func:`get_amplitude_columns` for multi-sample files.
-        mode:      Integration method.  Defaults to
-                   :attr:`IntegrationMode.BIN_SUMMATION` which is appropriate
-                   for log-spaced NMR inversion output.
-
-    Returns:
-        AnalysisResult containing all derived quantities.
-
-    Raises:
-        FileNotFoundError: Propagated from load_raw_data.
-        ValueError: Propagated from load_raw_data or classification.
-    """
-    raw        = load_raw_data(file_path, column=column)
-    radius_nm  = compute_radius(raw.t2_ms)
+    """Full analysis pipeline for one NMR data file / amplitude column."""
+    mode = _coerce_mode(mode)
+    raw = load_raw_data(file_path, column=column)
+    radius_nm = compute_radius(raw.t2_ms)
     cumulative = compute_cumulative(raw.amplitude)
 
-    system_a = _bin_summation(raw.t2_ms, raw.amplitude, SYSTEM_A, "A", mode)
-    system_b = _bin_summation(raw.t2_ms, raw.amplitude, SYSTEM_B, "B", mode)
+    system_a = _classify(raw.t2_ms, raw.amplitude, SYSTEM_A, "A", mode)
+    system_b = _classify(raw.t2_ms, raw.amplitude, SYSTEM_B, "B", mode)
 
     return AnalysisResult(
         raw=raw,
