@@ -41,13 +41,24 @@ def test_monotonic_tail_is_not_secondary_peak() -> None:
     assert peaks.primary.area_ratio == 1.0
 
 
-def test_true_secondary_peak_and_fallback_valley_flag() -> None:
+def test_true_secondary_peak_and_real_adjacent_valley() -> None:
     t2 = np.array([0.1, 0.2, 1.0, 5.0, 20.0, 80.0, 300.0], dtype=float)
     amp = np.array([1.0, 8.0, 4.0, 2.0, 1.0, 3.0, 0.5], dtype=float)
 
     peaks = detect_peaks(t2, amp)
     assert peaks.has_secondary is True
     assert peaks.secondary is not None
+    assert peaks.valley is not None
+    assert peaks.valley.is_fallback is False
+    assert peaks.valley.t2_ms == 20.0
+
+
+def test_true_secondary_peak_without_real_valley_uses_fallback() -> None:
+    t2 = np.array([0.1, 0.2, 1.0, 5.0, 20.0, 80.0, 300.0], dtype=float)
+    amp = np.array([1.0, 8.0, 7.0, 6.0, 5.0, 9.0, 0.5], dtype=float)
+
+    peaks = detect_peaks(t2, amp)
+    assert peaks.has_secondary is True
     assert peaks.valley is not None
     assert peaks.valley.is_fallback is True
     assert peaks.valley.t2_ms == 10.0
