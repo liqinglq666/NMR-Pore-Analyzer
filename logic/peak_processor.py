@@ -111,26 +111,42 @@ def _find_valley_between(
     pri_idx: int,
     sec_idx: int,
 ) -> tuple[ValleyInfo, float]:
-    """Find a strict local minimum between two peaks, or return fallback."""
+    """Find a strict local minimum between two peaks, or return fallback.
+
+    The peak endpoints are included in the local-minimum test so a valid valley
+    immediately next to a peak is not incorrectly treated as fallback.
+    """
     left = min(pri_idx, sec_idx)
     right = max(pri_idx, sec_idx)
-    candidate_indices = np.arange(left + 1, right, dtype=int)
+    if right - left < 2:
+        return _fallback_valley(t2_ms, amplitude)
 
-    if len(candidate_indices) >= 3:
-        local_amp = amplitude[candidate_indices]
-        rel_min_local, = argrelmin(local_amp, order=1)
-        if len(rel_min_local) > 0:
-            best_local = rel_min_local[np.argmin(local_amp[rel_min_local])]
-            v_idx = int(candidate_indices[best_local])
-            v_t2 = float(t2_ms[v_idx])
-            valley = ValleyInfo(
-                t2_ms=v_t2,
-                radius_nm=RADIUS_FACTOR * v_t2,
-                amplitude=float(amplitude[v_idx]),
-                is_fallback=False,
-            )
-            return valley, v_t2
+    segment_indices = np.arange(left, right + 1, dtype=int)
+    local_amp = amplitude[segment_indices]
+    rel_min_local, = argrelmin(local_amp, order=1)
 
+    valid_global: list[int] = []
+    for rel_idx in rel_min_local:
+        global_idx = int(segment_indices[rel_idx])
+        if left < global_idx < right:
+            valid_global.append(global_idx)
+
+    if valid_global:
+        best_idx = min(valid_global, key=lambda idx: float(amplitude[idx]))
+        v_t2 = float(t2_ms[best_idx])
+        valley = ValleyInfo(
+            t2_ms=v_t2,
+            radius_nm=RADIUS_FACTOR * v_t2,
+            amplitude=float(amplitude[best_idx]),
+            is_fallback=False,
+        )
+        return valley, v_t2
+
+    return _fallback_valley(t2_ms, amplitude)
+
+
+def _fallback_valley(t2_ms: np.ndarray, amplitude: np.ndarray) -> tuple[ValleyInfo, float]:
+    """Return canonical fallback valley information."""
     fallback_t2 = VALLEY_FALLBACK_MS
     fb_idx = int(np.argmin(np.abs(t2_ms - fallback_t2)))
     valley = ValleyInfo(
