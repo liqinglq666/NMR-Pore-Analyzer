@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from logic.config import APP_NAME, APP_VERSION, ORGANIZATION_NAME
-from ui.main_window import MainWindow
+from ui.main_window_safe import MainWindow
 
 
 def _exception_hook(
