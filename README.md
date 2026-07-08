@@ -1,15 +1,31 @@
-# liqinglq666-NMR-Analyzer v1.0
+# NMR-Pore-Analyzer v2.1
 
-> 低场核磁共振（LF-NMR）T₂ 弛豫时间数据的孔隙结构分析桌面工具<br>
-> *仅供学术交流使用*
+> 低场核磁共振（LF-NMR）T₂ 弛豫时间数据的孔隙结构分析桌面工具。  
+> 适用于 `.xlsx`、`.xls`、`.csv` 格式的 T₂ 反演谱数据分析。  
+> *仅供学术交流和科研数据处理使用。*
 
 ---
 
-## 项目结构
+## 1. 项目定位
 
-```
-NMR-Pore-Distribution-Analyzer-Pro/
+NMR-Pore-Analyzer 用于将 LF-NMR T₂ 弛豫谱转换为孔径分布，并输出：
+
+- T₂ → pore radius 转换结果；
+- System A：物理形态分类；
+- System B：损伤潜势分类；
+- 主峰 / 次峰 / 谷值识别；
+- 累积孔隙度曲线；
+- Origin-ready Excel 数据表；
+- 可直接用于论文绘图的 PNG / PDF / SVG 图像。
+
+---
+
+## 2. 项目结构
+
+```text
+NMR-Pore-Analyzer/
 ├── main.py
+├── requirements.txt
 ├── logic/
 │   ├── config.py
 │   ├── analyzer.py
@@ -20,42 +36,91 @@ NMR-Pore-Distribution-Analyzer-Pro/
     └── main_window.py
 ```
 
-### 模块依赖
+### 模块关系
 
 ```mermaid
 flowchart TD
     main["main.py"] --> mw["ui/main_window.py"]
     mw --> pc["ui/plot_canvas.py"]
     mw --> az["logic/analyzer.py"]
+    mw --> pp["logic/peak_processor.py"]
     mw --> ex["logic/exporter.py"]
     az --> cfg["logic/config.py"]
-    az --> pp["logic/peak_processor.py"]
-    ex --> cfg
-    pc --> az
+    pp --> cfg
+    ex --> az
+    ex --> pp
 ```
 
 ---
 
-## 数据处理流程
+## 3. 安装与运行
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+依赖包括：
+
+```text
+PySide6
+numpy
+pandas
+openpyxl
+xlrd
+matplotlib
+scipy
+```
+
+说明：
+
+- `.xlsx` 使用 `openpyxl` 读取；
+- `.xls` 使用 `xlrd` 读取；
+- `.csv` 默认尝试 `utf-8-sig`，失败后自动尝试 `gbk`，方便读取中文仪器导出文件。
+
+---
+
+## 4. 数据格式要求
+
+至少需要 1 列 T₂ 时间轴和 1 列幅值 / 信号列。
+
+推荐格式：
+
+| T2(ms) | Sample-1 | Sample-2 | Sample-3 |
+|---:|---:|---:|---:|
+| 0.01 | 12.3 | 11.9 | 13.1 |
+| 0.02 | 15.6 | 14.8 | 15.2 |
+| ... | ... | ... | ... |
+
+程序会自动识别常见列名：
+
+- T₂ 列：`T2`、`T2(ms)`、`T₂(ms)`、`time(ms)`、`弛豫时间`、`弛豫时间/ms` 等；
+- 幅值列：`amplitude`、`signal`、`intensity`、`幅值`、`信号强度`、`孔隙度` 等。
+
+如果存在多个幅值列，程序会自动批量分析每一列，并以列名作为样品名。
+
+---
+
+## 5. 数据处理流程
 
 ```mermaid
 flowchart LR
-    A(["Raw .xlsx/.csv"]) --> B["Preprocessing\n去 NaN / 过滤 ≤0"]
-    B --> C["T₂ → 孔径转换"]
-    C --> D["积分\nBin / Log-Trap / Linear-Trap"]
-    D --> E["System A\n物理分类"]
-    D --> F["System B\n损伤分类"]
-    D --> G["Peak Detector\n主峰 / 次峰 / 谷值"]
-    D --> H["累积孔隙度"]
-    E & F & G & H --> I["PlotCanvas 可视化"]
-    E & F & G --> J["Excel 导出"]
+    A([Raw xlsx/xls/csv]) --> B[Column detection]
+    B --> C[Numeric cleaning]
+    C --> D[Drop NaN and non-positive values]
+    D --> E[Merge duplicated T2 bins]
+    E --> F[T2 to radius conversion]
+    F --> G[Integration and classification]
+    G --> H[Peak and valley detection]
+    H --> I[Plot and tables]
+    I --> J[Excel / figure export]
 ```
 
 ---
 
-## 核心公式
+## 6. 核心公式
 
-### 1. T₂ → 孔径转换
+### 6.1 T₂ → 孔径转换
 
 基于表面弛豫理论，多孔介质中流体的横向弛豫速率满足：
 
@@ -66,7 +131,7 @@ flowchart LR
 + \frac{D\left(\gamma G T_E\right)^2}{12}
 ```
 
-忽略体相弛豫和扩散项（短回波间距条件下），化简为：
+在短回波间距、体相弛豫和扩散项可忽略时：
 
 ```math
 \frac{1}{T_2}
@@ -74,158 +139,99 @@ flowchart LR
 = \rho_2 \cdot \frac{F_s}{r}
 ```
 
-其中 `F_s` 为孔隙形状因子（球形 `F_s = 3`，柱形 `F_s = 2`），由此导出线性标定关系：
+本程序默认采用标定锚点：
+
+```math
+T_2^* = 4.2\,\text{ms}
+\quad \Longleftrightarrow \quad
+r^* = 100\,\text{nm}
+```
+
+因此：
 
 ```math
 r\,[\text{nm}]
-= \frac{\rho_2 F_s}{1} \cdot T_2
-= \frac{100}{4.2} \cdot T_2\,[\text{ms}]
+= \frac{100}{4.2}\,T_2\,[\text{ms}]
 \approx 23.81\,T_2
 ```
 
-标定锚点：
+---
+
+## 7. 积分模式
+
+程序提供三种积分模式。
+
+### 7.1 Bin Summation（推荐）
+
+适合常见 LF-NMR 仪器反演得到的离散谱：
 
 ```math
-T_2^{*} = 4.2\,\text{ms}
-\quad \Longleftrightarrow \quad
-r^{*} = 100\,\text{nm}
+S_k = \sum_{i \in k} A_i
 ```
 
-表面弛豫率：
+类别比例：
 
 ```math
-\rho_2 \approx 7.94\,\text{nm/ms}
+\phi_k = \frac{|S_k|}{\sum_j |S_j|}
 ```
+
+### 7.2 Log-domain Integration
+
+在 `log10(T2)` 坐标下做梯形积分：
+
+```math
+S_k = \int_{\log_{10}T_{2,lo}}^{\log_{10}T_{2,hi}} A\,d(\log_{10}T_2)
+```
+
+程序会在分类边界处做线性插值，避免阈值落在两个采样点之间时漏面积。
+
+### 7.3 Linear Integration
+
+在线性 T₂ 坐标下做梯形积分：
+
+```math
+S_k = \int_{T_{2,lo}}^{T_{2,hi}} A\,dT_2
+```
+
+⚠ 仅当原始数据是线性等间距 T₂ 采样时建议使用。多数仪器反演谱是对数采样，默认仍推荐 Bin Summation。
 
 ---
 
-### 2. 孔径分布函数
+## 8. 孔隙分类体系
 
-定义信号振幅谱 `{A_i}` 对应的孔径分布函数为：
+### 8.1 System A：物理形态分类
 
-```math
-f(r)
-= \frac{\mathrm{d}V_\text{pore}}{\mathrm{d}(\ln r)}
-= A_i \cdot \frac{r_i}{\Delta r_i}
-```
+| 类别 | T₂ 范围 / ms | r 范围 / nm |
+|---|---:|---:|
+| Gel | [0, 0.42) | [0, 10) |
+| Transition | [0.42, 4.2) | [10, 100) |
+| Capillary | [4.2, 41.7) | [100, 1000) |
+| Air-voids | [41.7, +∞) | [1000, +∞) |
 
-对数坐标下归一化孔径分布密度：
+### 8.2 System B：损伤潜势分类
 
-```math
-\tilde{f}(r)
-= \frac{f(r)}{\displaystyle\int_0^{+\infty} f(r)\,\mathrm{d}(\ln r)}
-= \frac{A_i}{\displaystyle\sum_{j=1}^N A_j \cdot \Delta(\ln r_j)}
-```
-
----
-
-### 3. 积分模式
-
-**Bin Summation**（默认，适用于对数等间距 ILT 反演结果）
-
-```math
-S^{(\text{bin})} = \sum_{i=1}^{N} A_i
-```
-
-**Log-Trapezoidal**（对数空间梯形积分，保持谱形不失真）
-
-```math
-S^{(\text{log})}
-= \sum_{i=1}^{N-1}
-\frac{A_i + A_{i+1}}{2} \cdot \Delta_i^{\log},
-\qquad
-\Delta_i^{\log} = \log_{10}\frac{t_{i+1}}{t_i}
-```
-
-**Linear Trapezoidal** ⚠（仅适用于线性等间距采样数据）
-
-```math
-S^{(\text{lin})}
-= \sum_{i=1}^{N-1}
-\frac{A_i + A_{i+1}}{2} \cdot (t_{i+1} - t_i)
-```
-
-**各类别相对孔隙度**
-
-```math
-\phi_k
-= \frac{\left|S_k\right|}{\displaystyle\sum_j \left|S_j\right|},
-\qquad
-\sum_k \phi_k = 1
-```
-
----
-
-### 4. 孔隙分类体系 A（物理形态）
-
-| 类别 | T2 (ms) | r (nm)             |
-|---|---|--------------------|
-| Gel pores | [0, 0.42) | [0, 10)           |
-| Transition pores | [0.42, 4.2) | [10, 100) |
-| Capillary pores | [4.2, 41.7) | [100, 1000) |
-| Air-voids | [41.7, +inf) | [1000, +inf) |
-
-### 5. 孔隙分类体系 B（损伤潜势）
-
-| 类别 | T2 (ms)           | r (nm)            |
-|---|-------------------|-------------------|
+| 类别 | T₂ 范围 / ms | r 范围 / nm |
+|---|---:|---:|
 | Harmless | [0, 0.83) | [0, 20) |
 | Less-harmful | [0.83, 2.08) | [20, 50) |
 | Harmful | [2.08, 8.33) | [50, 200) |
-| More-harmful | [8.33, +inf) | [200, +inf) |
+| More-harmful | [8.33, +∞) | [200, +∞) |
 
 ---
 
-### 6. 累积孔隙度函数
+## 9. 峰值与谷值识别
 
-定义累积孔隙体积分数（CDF）为：
+### 9.1 Primary Peak
 
-```math
-\Phi\!\left(T_2^{(n)}\right)
-= \frac{\displaystyle\sum_{i=1}^{n} A_i}
-       {\displaystyle\sum_{i=1}^{N} A_i},
-\quad n = 1, \ldots, N
-```
-
-其导数即归一化孔径分布概率密度：
+主峰定义为低 T₂ 区间 `[0, 10)` ms 内的全局最大值：
 
 ```math
-p_n
-= \frac{\mathrm{d}\Phi}{\mathrm{d}(\ln T_2)}
-\Bigg|_{T_2^{(n)}}
-\approx \frac{A_n}{\displaystyle\sum_{i=1}^{N} A_i}
+i_{pri} = \arg\max_{i:T_{2,i}\in[0,10)} A_i
 ```
 
----
+### 9.2 Secondary Peak
 
-### 7. 峰值检测算法
-
-设信号序列和对应时间轴为：
-
-```math
-\mathbf{A} = (A_1, A_2, \ldots, A_N)
-```
-
-```math
-\mathbf{t} = (t_1, t_2, \ldots, t_N)
-```
-
-**Primary Peak**：限定域内全局最大值
-
-```math
-\Omega_1 = \{i : t_i \in [0, 10)\,\text{ms}\}
-```
-
-```math
-i_{\text{pri}}
-= \underset{i\,\in\,\Omega_1}{\arg\max}\; A_i
-```
-
-**Secondary Peak**：限定域内满足局部极大值条件的最大候选峰：
-
-```math
-\Omega_2 = \{i : t_i \in (10, 1000]\,\text{ms}\}
-```
+次峰定义为 `(10, 1000]` ms 内的严格局部极大值：
 
 ```math
 A_i > A_{i-1}
@@ -233,61 +239,57 @@ A_i > A_{i-1}
 A_i > A_{i+1}
 ```
 
-```math
-\mathcal{L} \subset \Omega_2
-```
+如果高 T₂ 区间只是单调尾部，程序不会强行生成次峰。
+
+### 9.3 Valley
+
+若存在主峰与次峰，则在两峰之间寻找严格局部极小值：
 
 ```math
-i_{\text{sec}}
-= \underset{i\,\in\,\mathcal{L}}{\arg\max}\; A_i
+i_v = \arg\min_{i_{pri}<i<i_{sec}} A_i
 ```
 
-**Valley**：两峰间极小值，用于划分积分域
-
-```math
-i_{\text{v}}
-= \underset{\{i\,:\,i_{\text{pri}} < i < i_{\text{sec}}\}}{\arg\min}\; A_i
-```
-
-```math
-t_{\text{split}}
-=
-\begin{cases}
-t_{i_{\text{v}}}, & \mathcal{L} \neq \varnothing \\
-10\,\text{ms}, & \mathcal{L} = \varnothing\;(\text{fallback})
-\end{cases}
-```
-
-**峰域面积与相对贡献**
-
-```math
-A_{\text{pri}} = \sum_{t_i < t_{\text{split}}} A_i,
-\qquad
-A_{\text{sec}} = \sum_{t_i \geq t_{\text{split}}} A_i
-```
-
-```math
-R_k
-= \frac{A_k}{A_{\text{pri}} + A_{\text{sec}}},
-\quad
-k \in \{\text{pri},\,\text{sec}\},
-\qquad
-R_{\text{pri}} + R_{\text{sec}} \equiv 1
-```
+如果两峰之间不存在严格局部极小值，程序使用 `T2 = 10 ms` 作为 fallback boundary，并在表格中标记 `Fallback? = Yes`。
 
 ---
 
-## 快速启动
+## 10. 导出内容
 
-```bash
-pip install -r requirements.txt
-python main.py
-```
+Excel 导出包含 4 张表：
 
-**依赖：** Python ≥ 3.10 · PySide6 · NumPy · Pandas · Matplotlib · SciPy · openpyxl
+| Sheet | 内容 |
+|---|---|
+| `Summary_Peak_Statistics` | 主峰、次峰、谷值、主/次峰面积比 |
+| `Pore_Classification_Ratios` | System A 与 System B 各类别百分比 |
+| `Cumulative_Curve_Data` | 每个样品的 Radius 与 Cumulative porosity 数据 |
+| `Differential_Curve_Data` | 每个样品的 Radius 与 Incremental signal fraction 数据 |
 
-> NumPy ≥ 2.0 使用 `numpy.trapezoid`，< 2.0 自动回退至 `numpy.trapz`
+图像可导出为：
+
+- PNG
+- PDF
+- SVG
 
 ---
 
-*liqinglq666 · 学术交流用途*
+## 11. 注意事项
+
+1. T₂ 数据必须为正值；幅值 / 信号也必须为正值。
+2. 程序会自动删除 NaN 和非正值。
+3. 重复 T₂ bin 会自动合并，幅值求和。
+4. 默认标定关系为 `4.2 ms ↔ 100 nm`，如需更换材料体系的表面弛豫率，应修改 `logic/config.py` 中的 `RADIUS_FACTOR`。
+5. 若数据没有低 T₂ 主峰窗口 `[0, 10)` ms 内的点，峰值分析会报错，说明数据范围不适合当前默认峰识别规则。
+
+---
+
+## 12. 版本说明
+
+当前版本：`v2.1.0`
+
+主要能力：
+
+- 支持 `.xlsx` / `.xls` / `.csv`；
+- 支持多样品列批量分析；
+- 支持 Bin / Log / Linear 三种积分模式；
+- 支持严格主峰、次峰和谷值识别；
+- 支持四表 Excel 导出和图像导出。
