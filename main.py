@@ -1,5 +1,5 @@
 """
-NMR-Pore-Analyzer v2.0 — Application entry point.
+NMR-Pore-Analyzer — Application entry point.
 
 Usage
 -----
@@ -14,6 +14,7 @@ import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from logic.config import APP_NAME, APP_VERSION, ORGANIZATION_NAME
 from ui.main_window import MainWindow
 
 
@@ -22,11 +23,7 @@ def _exception_hook(
     exc_value: BaseException,
     exc_tb: object,
 ) -> None:
-    """Global uncaught-exception handler.
-
-    Displays a critical dialog so the user sees the error rather than
-    a silent crash, then falls back to the default hook.
-    """
+    """Global uncaught-exception handler."""
     msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
     print(msg, file=sys.stderr)
     dlg = QMessageBox()
@@ -40,15 +37,14 @@ def _exception_hook(
 
 def main() -> None:
     """Bootstrap and run the Qt application."""
-    # High-DPI rendering
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("NMR-Pore-Analyzer")
-    app.setApplicationVersion("2.0.0")
-    app.setOrganizationName("Research Lab")
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
+    app.setOrganizationName(ORGANIZATION_NAME)
 
     sys.excepthook = _exception_hook
 
