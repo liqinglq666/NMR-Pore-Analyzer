@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from logic.analyzer import analyse, get_amplitude_columns
 from logic.config import IntegrationMode
@@ -17,18 +18,34 @@ def test_multisample_xlsx_analysis(tmp_path: Path) -> None:
             "T₂(ms)": [0.1, 0.2, 1.0, 5.0, 20.0, 80.0],
             "A": [1, 4, 2, 1, 0.5, 0.2],
             "B": [2, 5, 3, 1, 0.4, 0.1],
+            "备注": ["a", "b", "c", "d", "e", "f"],
         }
     )
     df.to_excel(file_path, index=False)
 
-    cols = get_amplitude_columns(file_path)
-    assert cols == ["A", "B"]
+    assert get_amplitude_columns(file_path) == ["A", "B"]
 
     result = analyse(file_path, column="A", mode=IntegrationMode.BIN_SUMMATION)
     assert result.raw.sample_name == "A"
     assert np.isclose(result.cumulative[-1], 1.0)
     assert np.isclose(result.system_a.ratios.sum(), 1.0)
     assert np.isclose(result.system_b.ratios.sum(), 1.0)
+
+
+def test_negative_amplitude_keeps_t2_bin(tmp_path: Path) -> None:
+    file_path = tmp_path / "baseline.csv"
+    pd.DataFrame(
+        {
+            "T2(ms)": [0.1, 0.2, 1.0, 5.0],
+            "Amplitude": [1.0, -0.2, 2.0, 1.0],
+        }
+    ).to_csv(file_path, index=False)
+
+    with pytest.warns(RuntimeWarning, match="clipped"):
+        result = analyse(file_path)
+
+    assert result.raw.t2_ms.tolist() == [0.1, 0.2, 1.0, 5.0]
+    assert result.raw.amplitude.tolist() == [1.0, 0.0, 2.0, 1.0]
 
 
 def test_monotonic_tail_is_not_secondary_peak() -> None:
@@ -53,7 +70,7 @@ def test_true_secondary_peak_and_real_adjacent_valley() -> None:
     assert peaks.valley.t2_ms == 20.0
 
 
-def test_true_secondary_peak_without_real_valley_uses_fallback() -> None:
+def test_fallback_valley_uses_real_sample() -> None:
     t2 = np.array([0.1, 0.2, 20.0, 80.0, 300.0], dtype=float)
     amp = np.array([1.0, 8.0, 8.5, 9.0, 0.5], dtype=float)
 
@@ -61,7 +78,8 @@ def test_true_secondary_peak_without_real_valley_uses_fallback() -> None:
     assert peaks.has_secondary is True
     assert peaks.valley is not None
     assert peaks.valley.is_fallback is True
-    assert peaks.valley.t2_ms == 10.0
+    assert peaks.valley.t2_ms == 20.0
+    assert peaks.valley.amplitude == 8.5
 
 
 def test_log_integration_preserves_normalized_ratios(tmp_path: Path) -> None:
