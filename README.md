@@ -10,24 +10,16 @@
 +\frac{D(\gamma G T_E)^2}{12}
 ```
 
-短回波间隔、表面弛豫占主导时：
-
 ```math
-\frac{1}{T_2}
-\approx
-\rho_2\frac{S}{V}
+\frac{1}{T_2}\approx\rho_2\frac{S}{V}
 ```
 
 ```math
 \frac{S}{V}=\frac{F_s}{r}
 ```
 
-因此：
-
 ```math
-\frac{1}{T_2}
-\approx
-\rho_2\frac{F_s}{r}
+\frac{1}{T_2}\approx\rho_2\frac{F_s}{r}
 ```
 
 ```math
@@ -38,8 +30,6 @@ r=\rho_2F_sT_2
 
 ## 2. T₂–孔半径转换
 
-标定关系：
-
 ```math
 T_2=4.2\ \mathrm{ms}
 \quad\Longleftrightarrow\quad
@@ -47,9 +37,7 @@ r=100\ \mathrm{nm}
 ```
 
 ```math
-k_r
-=\frac{100}{4.2}
-=23.8095238\ \mathrm{nm/ms}
+k_r=\frac{100}{4.2}=23.8095238\ \mathrm{nm/ms}
 ```
 
 ```math
@@ -57,8 +45,6 @@ r\,[\mathrm{nm}]
 =\frac{100}{4.2}T_2\,[\mathrm{ms}]
 \approx23.81T_2
 ```
-
-反算：
 
 ```math
 T_2\,[\mathrm{ms}]
@@ -117,39 +103,26 @@ C_B(r)=
 
 ## 4. 总信号与累积分布
 
-离散 T₂ 反演谱：
-
 ```math
-\left\{(T_{2,i},A_i)\right\}_{i=1}^{N},
-\qquad A_i\ge0
+(T_{2,i},A_i),\qquad i=1,2,\ldots,N,\qquad A_i\ge0
 ```
 
-总信号：
-
 ```math
-A_{\mathrm{tot}}
-=\sum_{i=1}^{N}A_i
+A_{\mathrm{tot}}=\sum_{i=1}^{N}A_i
 ```
-
-归一化累积分布：
 
 ```math
 F_i
-=\frac{\displaystyle\sum_{j=1}^{i}A_j}
-{\displaystyle\sum_{j=1}^{N}A_j}
+=\frac{\sum_{j=1}^{i}A_j}{\sum_{j=1}^{N}A_j}
 ```
 
 ```math
-0\le F_i\le1,
-\qquad
-F_N=1
+0\le F_i\le1,\qquad F_N=1
 ```
 
 ---
 
 ## 5. 孔隙比例积分
-
-第 k 个孔隙区间：
 
 ```math
 I_k=[T_{2,k}^{L},T_{2,k}^{U})
@@ -158,13 +131,11 @@ I_k=[T_{2,k}^{L},T_{2,k}^{U})
 ### 5.1 Bin Summation
 
 ```math
-S_k
-=\sum_{T_{2,i}\in I_k}A_i
+S_k=\sum_{T_{2,i}\in I_k}A_i
 ```
 
 ```math
-\phi_k
-=\frac{S_k}{\displaystyle\sum_jS_j}
+\phi_k=\frac{S_k}{\sum_jS_j}
 ```
 
 ```math
@@ -183,75 +154,57 @@ S_k^{(\log)}
 A(T_2)\,d(\log_{10}T_2)
 ```
 
-离散形式：
-
 ```math
 S_k^{(\log)}
 \approx
 \sum_{i=1}^{m-1}
 \frac{A_i+A_{i+1}}{2}
-\left[
-\log_{10}T_{2,i+1}-\log_{10}T_{2,i}
-\right]
+[\log_{10}T_{2,i+1}-\log_{10}T_{2,i}]
 ```
 
 ### 5.3 Linear Trapezoidal Integration
 
 ```math
 S_k^{(\mathrm{lin})}
-=\int_{T_{2,k}^{L}}^{T_{2,k}^{U}}
-A(T_2)\,dT_2
+=\int_{T_{2,k}^{L}}^{T_{2,k}^{U}}A(T_2)\,dT_2
 ```
-
-离散形式：
 
 ```math
 S_k^{(\mathrm{lin})}
 \approx
 \sum_{i=1}^{m-1}
 \frac{A_i+A_{i+1}}{2}
-\left(T_{2,i+1}-T_{2,i}\right)
+(T_{2,i+1}-T_{2,i})
 ```
-
-边界线性插值：
 
 ```math
 A(T_b)
 =A_i
 +\frac{A_{i+1}-A_i}{T_{2,i+1}-T_{2,i}}
-\left(T_b-T_{2,i}\right)
+(T_b-T_{2,i})
 ```
 
 ---
 
 ## 6. 主峰
 
-搜索区间：
-
 ```math
 0\le T_2<10\ \mathrm{ms}
 ```
 
-主峰索引：
-
 ```math
-i_{\mathrm{pri}}
+A_{i_{\mathrm{pri}}}
 =
-\operatorname*{arg\,max}_{i:\,0\le T_{2,i}<10}A_i
+\max_{0\le T_{2,i}<10}A_i
 ```
-
-主峰位置与孔半径：
 
 ```math
 T_{2,\mathrm{pri}}=T_{2,i_{\mathrm{pri}}}
 ```
 
 ```math
-r_{\mathrm{pri}}
-=23.8095238\,T_{2,\mathrm{pri}}
+r_{\mathrm{pri}}=23.8095238\,T_{2,\mathrm{pri}}
 ```
-
-主峰幅值：
 
 ```math
 A_{\mathrm{pri}}=A_{i_{\mathrm{pri}}}
@@ -261,117 +214,101 @@ A_{\mathrm{pri}}=A_{i_{\mathrm{pri}}}
 
 ## 7. 次峰
 
-搜索区间：
-
 ```math
 10<T_2\le1000\ \mathrm{ms}
 ```
 
-严格局部极大值条件：
+严格局部极大值：
 
 ```math
-A_i>A_{i-1}
-\quad\text{and}\quad
-A_i>A_{i+1}
+A_i>A_{i-1},\qquad A_i>A_{i+1}
 ```
 
-候选集合：
+候选条件：
 
 ```math
-\mathcal{P}
-=
-\left\{
-i\;\middle|\;
+i\in\mathcal P
+\iff
 10<T_{2,i}\le1000,
-\ A_i>A_{i-1},
-\ A_i>A_{i+1}
-\right\}
+\quad A_i>A_{i-1},
+\quad A_i>A_{i+1}
 ```
 
-次峰索引：
+次峰：
 
 ```math
-i_{\mathrm{sec}}
+A_{i_{\mathrm{sec}}}
 =
-\operatorname*{arg\,max}_{i\in\mathcal{P}}A_i
+\max_{i\in\mathcal P}A_i
 ```
-
-若：
 
 ```math
-\mathcal{P}=\varnothing
+T_{2,\mathrm{sec}}=T_{2,i_{\mathrm{sec}}}
 ```
 
-则不定义次峰。
+```math
+r_{\mathrm{sec}}=23.8095238\,T_{2,\mathrm{sec}}
+```
+
+若无候选次峰：
+
+```math
+\mathcal P=\varnothing
+```
 
 ---
 
 ## 8. 峰间谷值
 
-严格局部极小值条件：
+严格局部极小值：
 
 ```math
-A_i<A_{i-1}
-\quad\text{and}\quad
-A_i<A_{i+1}
+A_i<A_{i-1},\qquad A_i<A_{i+1}
 ```
 
-候选谷值集合：
+候选条件：
 
 ```math
-\mathcal{V}
-=
-\left\{
-i\;\middle|\;
+i\in\mathcal V
+\iff
 i_{\mathrm{pri}}<i<i_{\mathrm{sec}},
-\ A_i<A_{i-1},
-\ A_i<A_{i+1}
-\right\}
+\quad A_i<A_{i-1},
+\quad A_i<A_{i+1}
 ```
 
-谷值索引：
+谷值：
 
 ```math
-i_v
-=
-\operatorname*{arg\,min}_{i\in\mathcal{V}}A_i
+A_{i_v}=\min_{i\in\mathcal V}A_i
 ```
 
 ```math
 T_{2,v}=T_{2,i_v}
 ```
 
-若不存在严格局部谷值：
+若：
 
 ```math
-\mathcal{V}=\varnothing
+\mathcal V=\varnothing
 ```
 
-则使用两峰之间最接近 10 ms 的采样点：
+则在两峰之间选择最接近 10 ms 的采样点：
 
 ```math
-i_v
+\mathcal I_b
 =
-\operatorname*{arg\,min}_{i\in\mathcal{I}_{\mathrm{between}}}
-\left|T_{2,i}-10\right|
+\{i\mid i_{\mathrm{pri}}<i<i_{\mathrm{sec}}\}
 ```
 
-其中：
-
 ```math
-\mathcal{I}_{\mathrm{between}}
+|T_{2,i_v}-10|
 =
-\left\{
-i\;\middle|\;
-\min(i_{\mathrm{pri}},i_{\mathrm{sec}})<i<\max(i_{\mathrm{pri}},i_{\mathrm{sec}})
-\right\}
+\min_{i\in\mathcal I_b}|T_{2,i}-10|
 ```
 
 ---
 
 ## 9. 主峰 / 次峰面积
-
-以谷值 T₂ 为分界：
 
 ```math
 S_{\mathrm{pri}}
@@ -388,8 +325,6 @@ S_{\mathrm{tot}}
 =S_{\mathrm{pri}}+S_{\mathrm{sec}}
 =\sum_{i=1}^{N}A_i
 ```
-
-面积占比：
 
 ```math
 R_{\mathrm{pri}}
@@ -408,7 +343,5 @@ R_{\mathrm{pri}}+R_{\mathrm{sec}}=1
 无次峰时：
 
 ```math
-S_{\mathrm{pri}}=S_{\mathrm{tot}},
-\qquad
-R_{\mathrm{pri}}=1
+S_{\mathrm{pri}}=S_{\mathrm{tot}},\qquad R_{\mathrm{pri}}=1
 ```
