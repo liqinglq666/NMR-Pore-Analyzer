@@ -131,7 +131,13 @@ I_k=[T_{2,k}^{L},T_{2,k}^{U})
 ### 5.1 Bin Summation
 
 ```math
-S_k=\sum_{T_{2,i}\in I_k}A_i
+i\in\mathcal I_k
+\iff
+T_{2,k}^{L}\le T_{2,i}<T_{2,k}^{U}
+```
+
+```math
+S_k=\sum_{i\in\mathcal I_k}A_i
 ```
 
 ```math
@@ -295,9 +301,9 @@ T_{2,v}=T_{2,i_v}
 则在两峰之间选择最接近 10 ms 的采样点：
 
 ```math
-\mathcal I_b
-=
-\{i\mid i_{\mathrm{pri}}<i<i_{\mathrm{sec}}\}
+i\in\mathcal I_b
+\iff
+i_{\mathrm{pri}}<i<i_{\mathrm{sec}}
 ```
 
 ```math
@@ -310,14 +316,30 @@ T_{2,v}=T_{2,i_v}
 
 ## 9. 主峰 / 次峰面积
 
+主峰区域：
+
+```math
+i\in\mathcal I_{\mathrm{pri}}
+\iff
+T_{2,i}<T_{2,v}
+```
+
 ```math
 S_{\mathrm{pri}}
-=\sum_{T_{2,i}<T_{2,v}}A_i
+=\sum_{i\in\mathcal I_{\mathrm{pri}}}A_i
+```
+
+次峰区域：
+
+```math
+i\in\mathcal I_{\mathrm{sec}}
+\iff
+T_{2,i}\ge T_{2,v}
 ```
 
 ```math
 S_{\mathrm{sec}}
-=\sum_{T_{2,i}\ge T_{2,v}}A_i
+=\sum_{i\in\mathcal I_{\mathrm{sec}}}A_i
 ```
 
 ```math
