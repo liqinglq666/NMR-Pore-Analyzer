@@ -406,6 +406,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     @Slot()
     def _on_browse(self) -> None:
+        if self._analysis_busy():
+            QMessageBox.information(self, "Busy", "Analysis is still running.")
+            return
         path_str, _ = QFileDialog.getOpenFileName(
             self,
             "Open NMR Data File",
@@ -450,6 +453,9 @@ class MainWindow(QMainWindow):
             self._batch_worker = None
             return False
 
+    def _analysis_busy(self) -> bool:
+        return self._thread_running() or self._thread is not None
+
     @Slot()
     def _on_worker_thread_finished(self) -> None:
         if self.sender() is not self._thread:
@@ -475,7 +481,7 @@ class MainWindow(QMainWindow):
         if self._file_path is None or not self._amp_columns:
             return
 
-        if self._thread_running():
+        if self._analysis_busy():
             QMessageBox.information(self, "Busy", "Analysis is still running.")
             return
 
@@ -580,6 +586,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     @Slot()
     def _on_export_excel(self) -> None:
+        if self._analysis_busy():
+            QMessageBox.information(self, "Busy", "Analysis is still running.")
+            return
         if not self._batch_results:
             QMessageBox.information(self, "No Data", "Open a file first.")
             return
@@ -606,6 +615,9 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_save_figure(self) -> None:
+        if self._analysis_busy():
+            QMessageBox.information(self, "Busy", "Analysis is still running.")
+            return
         if self._analysis is None:
             QMessageBox.information(self, "No Data", "Open a file first.")
             return
@@ -652,7 +664,7 @@ class MainWindow(QMainWindow):
     # Internal helpers
     # ------------------------------------------------------------------
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._thread_running():
+        if self._analysis_busy():
             event.ignore()
             QMessageBox.information(self, "Busy", "Please finish the analysis before closing.")
             return
