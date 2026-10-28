@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QFont
+from PySide6.QtGui import QAction, QColor, QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -415,14 +415,15 @@ class MainWindow(QMainWindow):
         if not path_str:
             return
 
-        self._file_path = Path(path_str)
-        self._path_edit.setText(str(self._file_path))
+        selected_path = Path(path_str)
         try:
-            cols = get_amplitude_columns(self._file_path)
+            cols = get_amplitude_columns(selected_path)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Column Detection", str(exc))
             return
 
+        self._file_path = selected_path
+        self._path_edit.setText(str(selected_path))
         self._amp_columns = cols
         n = len(cols)
         self._statusbar.showMessage(
@@ -439,38 +440,65 @@ class MainWindow(QMainWindow):
         if self._file_path is not None and self._amp_columns:
             self._run_batch()
 
+    def _thread_running(self) -> bool:
+        if self._thread is None:
+            return False
+        try:
+            return bool(self._thread.isRunning())
+        except RuntimeError:
+            self._thread = None
+            self._batch_worker = None
+            return False
+
+    @Slot()
+    def _on_worker_thread_finished(self) -> None:
+        if self.sender() is not self._thread:
+            return
+        self._thread = None
+        self._batch_worker = None
+        self._set_busy(False)
+
+    def _clear_results(self) -> None:
+        self._batch_results = []
+        self._analysis = None
+        self._peak_result = None
+        self._psd_idx = 0
+        self._btn_export.setEnabled(False)
+        self._psd_col_combo.blockSignals(True)
+        self._psd_col_combo.clear()
+        self._psd_col_combo.blockSignals(False)
+        self._populate_summary_tables([])
+        self._bar_canvas.clear()
+        self._psd_canvas.clear()
+
     def _run_batch(self) -> None:
         if self._file_path is None or not self._amp_columns:
             return
 
-        if self._thread is not None and self._thread.isRunning():
+        if self._thread_running():
             QMessageBox.information(self, "Busy", "Analysis is still running.")
             return
 
-        self._batch_results = []
-        self._analysis = None
-        self._peak_result = None
-        self._btn_export.setEnabled(False)
-        self._populate_summary_tables([])
-        self._bar_canvas.clear()
-        self._psd_canvas.clear()
+        self._clear_results()
         self._set_busy(True)
 
-        self._thread = QThread(self)
+        thread = QThread(self)
         worker = BatchWorker(self._file_path, list(self._amp_columns), self._current_mode())
-        worker.moveToThread(self._thread)
+        worker.moveToThread(thread)
+        self._thread = thread
         self._batch_worker = worker
 
-        self._thread.started.connect(worker.run)
+        thread.started.connect(worker.run)
         worker.progress.connect(self._progress.setValue)
         worker.col_done.connect(self._on_batch_col_done)
         worker.finished.connect(self._on_batch_finished)
         worker.error.connect(self._on_analysis_error)
-        worker.finished.connect(self._thread.quit)
-        worker.error.connect(self._thread.quit)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(lambda: self._set_busy(False))
-        self._thread.start()
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_worker_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
 
     @Slot(str, object, object)
     def _on_batch_col_done(self, col: str, analysis: AnalysisResult, peak_result: PeakResult) -> None:
@@ -500,7 +528,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_analysis_error(self, msg: str) -> None:
-        self._set_busy(False)
+        self._clear_results()
         self._statusbar.showMessage("Error during analysis.")
         QMessageBox.critical(self, "Analysis Error", msg)
 
@@ -623,6 +651,13 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._thread_running():
+            event.ignore()
+            QMessageBox.information(self, "Busy", "Please finish the analysis before closing.")
+            return
+        super().closeEvent(event)
+
     def _set_busy(self, busy: bool) -> None:
         self._btn_browse.setEnabled(not busy)
         self._mode_combo.setEnabled(not busy)
