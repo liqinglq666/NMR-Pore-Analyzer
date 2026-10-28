@@ -103,3 +103,20 @@ def test_close_is_blocked_while_worker_runs(
         patch.setattr(QMessageBox, "information", lambda *args: None)
         window.closeEvent(event)
     assert not event.isAccepted()
+
+
+def test_file_and_export_menus_are_blocked_while_busy(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_dialog(*args, **kwargs):
+        pytest.fail("File dialog must not open while analysis is running.")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(window, "_analysis_busy", lambda: True)
+        patch.setattr(QFileDialog, "getOpenFileName", unexpected_dialog)
+        patch.setattr(QFileDialog, "getSaveFileName", unexpected_dialog)
+        patch.setattr(QMessageBox, "information", lambda *args: None)
+
+        window._on_browse()
+        window._on_export_excel()
+        window._on_save_figure()
